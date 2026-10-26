@@ -29,6 +29,19 @@ jobs:
       - name: Configure (FidelityFX on)
         run: cmake --preset win-amd64 -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DREXGLUE_ENABLE_FIDELITYFX=ON
 
+      - name: Fix FidelityFX .rc files (UTF-16 -> ASCII, llvm-rc cannot read UTF-16)
+        run: |
+          Get-ChildItem out/build/win-amd64/_deps -Recurse -Filter *.rc | ForEach-Object {
+            $b = [IO.File]::ReadAllBytes($_.FullName)
+            if ($b.Length -ge 2 -and $b[0] -eq 0xFF -and $b[1] -eq 0xFE) {
+              $t = [IO.File]::ReadAllText($_.FullName)
+              $t = $t.Replace([string][char]0xA9, '(c)').Replace([string][char]0xAE, '(R)').Replace([string][char]0x2122, '(TM)')
+              $t = [regex]::Replace($t, '[^\x00-\x7F]', '')
+              [IO.File]::WriteAllText($_.FullName, $t, (New-Object Text.ASCIIEncoding))
+              Write-Host "converted $($_.FullName)"
+            }
+          }
+
       - name: Build RelWithDebInfo (the "rd" DLLs OpenJam uses)
         run: cmake --build out/build/win-amd64 --config RelWithDebInfo --target install --parallel
 
