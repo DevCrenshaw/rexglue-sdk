@@ -1,0 +1,46 @@
+# OpenJam: build the ReXGlue v0.10.0 runtime with AMD FidelityFX (FSR1 / CAS) turned on.
+# Add this file to a fork of github.com/rexglue/rexglue-sdk as .github/workflows/openjam-fsr-runtime.yml,
+# then Actions tab -> "OpenJam FSR runtime" -> Run workflow. Download the artifact when it finishes.
+name: OpenJam FSR runtime
+
+on: workflow_dispatch
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: f5337cdc947ff6d4c4196737e2c807a48f2a1fc2   # tag v0.10.0 = what OpenJam v1.0 ships
+          submodules: recursive
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Toolchain (LLVM 22.1.2 to match the OpenJam build, CMake, Ninja)
+        run: |
+          choco install llvm --version=22.1.2 -y --allow-downgrade
+          if ($LASTEXITCODE -ne 0) { choco install llvm -y }
+          choco install cmake ninja -y
+          clang --version
+
+      - name: Configure (FidelityFX on)
+        run: cmake --preset win-amd64 -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ -DREXGLUE_ENABLE_FIDELITYFX=ON
+
+      - name: Build RelWithDebInfo (the "rd" DLLs OpenJam uses)
+        run: cmake --build out/build/win-amd64 --config RelWithDebInfo --target install --parallel
+
+      - name: Collect DLLs
+        shell: bash
+        run: |
+          mkdir -p openjam_fsr
+          find out/install/win-amd64 out/build/win-amd64 -iname "rexruntimerd.dll" -o -iname "rexruntimerd.pdb" -o -iname "amd_fidelityfx*.dll" | while read f; do cp -v "$f" openjam_fsr/; done
+          ls -la openjam_fsr
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: openjam-fsr-runtime
+          path: openjam_fsr/
+          retention-days: 14
